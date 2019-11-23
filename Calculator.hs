@@ -10,6 +10,8 @@ Description:
     world for high-level math.
 -}
 
+import Data.List (find)
+
 -- Get engineering notation of a decimal number
 eng :: (Num a, Show a) => a -> String
 eng x
@@ -220,12 +222,55 @@ trade n' (Matrix xs') ys' = Matrix $ trade' n' xs' ys'
     trade' n (x:xs) ys = x : trade' (n - 1) xs ys
 
 -- Solve for a variable in a matrix given a solution vector
-solve :: (Num a, Fractional a) => Int -> Matrix a -> Matrix a -> a
-solve n mat@(Matrix _) sol@(Matrix _) = det mat' / det mat
+solve :: (Num a, Fractional a) => Int -> Matrix a -> Column a -> a
+solve n mat@(Matrix _) xs = det mat' / det mat
   where
     mat' = transpose
-         $ trade n (transpose mat) (head $ unMatrix $ transpose sol)
+         $ trade n (transpose mat) xs
+
+addColumn :: [a] -> Matrix a -> Matrix a
+addColumn as (Matrix xs') = Matrix $ addColumn' xs' as
+  where
+    addColumn' [] _ = []
+    addColumn' _ [] = []
+    addColumn' (x:xs) (y:ys) = (x ++ [y]) : addColumn' xs ys
 
 -- Get the variable vector of a matrix given a solution vector
-solveAll :: (Show a, Fractional a) => Matrix a -> Matrix a -> [a]
+solveAll :: (Show a, Fractional a) => Matrix a -> Column a -> Column a
 solveAll xs as = [ solve n xs as | n <- [0..length (head (unMatrix xs)) - 1] ]
+
+solveAllRREF :: (Fractional a, Eq a) => Matrix a -> Column a -> Column a
+solveAllRREF mat@(Matrix (x:xs)) as = concatMap (drop (length x))
+                                    $ unMatrix $ rref $ addColumn as mat
+
+rref :: (Eq a, Fractional a) => Matrix a -> Matrix a
+rref (Matrix xs) = Matrix $ rref' xs
+
+-- Stolen RREF function from rosettacode.org
+rref' :: (Eq a, Fractional a) => [[a]] -> [[a]]
+rref' m = f m 0 [0 .. rows - 1]
+  where rows = length m
+        cols = length $ head m
+        f m _    []              = m
+        f m lead (r : rs)
+            | indices == Nothing = m
+            | otherwise          = f m' (lead' + 1) rs
+          where indices = find p l
+                p (col, row) = m !! row !! col /= 0
+                l = [ (col, row) |
+                      col <- [lead .. cols - 1],
+                      row <- [r .. rows - 1] ]
+                Just (lead', i) = indices
+                newRow = map (/ m !! i !! lead') $ m !! i
+                m' = zipWith g [0..] $
+                     replace r newRow $
+                     replace i (m !! r) m
+                g n row
+                    | n == r    = row
+                    | otherwise = zipWith h newRow row
+                  where h = subtract . (* row !! lead')
+ 
+replace :: Int -> a -> [a] -> [a]
+{- Replaces the element at the given index. -}
+replace n e l = a ++ e : b
+  where (a, _ : b) = splitAt n l
